@@ -1507,7 +1507,7 @@ const S={
     ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
   </script>
   <script>
-    if('serviceWorker' in navigator){navigator.serviceWorker.register(URL.createObjectURL(new Blob(["const CACHE='bus-v3';self.addEventListener('install',e=>self.skipWaiting());self.addEventListener('activate',e=>self.clients.claim());self.addEventListener('fetch',e=>{e.respondWith(caches.open(CACHE).then(cache=>cache.match(e.request).then(h=>h||fetch(e.request).then(r=>{cache.put(e.request,r.clone());return r;}))).catch(()=>new Response('offline')));});"],{type:'application/javascript'}))).catch(()=>{});}
+    if('serviceWorker' in navigator){navigator.serviceWorker.register(URL.createObjectURL(new Blob(["const CACHE='bus-v4';self.addEventListener('install',e=>self.skipWaiting());self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));self.clients.claim();});self.addEventListener('fetch',e=>{e.respondWith(fetch(e.request).then(r=>{const c=r.clone();caches.open(CACHE).then(cache=>cache.put(e.request,c));return r;}).catch(()=>caches.match(e.request).then(h=>h||new Response('offline'))));});"],{type:'application/javascript'}))).catch(()=>{});}
     let dp;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();dp=e;const b=document.getElementById('ib');if(b)b.style.display='flex';});
     function ia(){if(dp){dp.prompt();dp.userChoice.then(()=>{dp=null;document.getElementById('ib').style.display='none';});}}
     if(/iphone|ipad|ipod/i.test(navigator.userAgent)&&!window.navigator.standalone&&!sessionStorage.getItem('ih')){sessionStorage.setItem('ih','1');setTimeout(()=>alert('📱 아이폰:\n하단 공유버튼 → 홈 화면에 추가'),1500);}
