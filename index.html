@@ -190,7 +190,7 @@ function getRouteColor(r){return ROUTE_COLORS[r]||EXTRA_ROUTE_COLORS[r]||EXTRA_C
 
 
 const FS_DOC = "users/changsik";
-const BASELINE_KEY = "bus-schedule-baseline-v8";
+const BASELINE_KEY = "bus-schedule-baseline-v9"; // v8→v9: 예전 버그로 꼬였을 수 있는 기준점 기록을 폐기하고 새로 계산
 
 // ---- 기기 간 저장 충돌 방지용 3-way 병합 유틸 ----
 // 문제 상황: 예전에는 저장할 때마다 이 기기가 들고 있는 상태를 통째로 서버에 덮어썼습니다.
@@ -552,6 +552,9 @@ function App(){
 
   const persist=useCallback((next)=>{
     try{localStorage.setItem(STORAGE_KEY,JSON.stringify(next));}catch(e){}
+    // 반복 저장 감지로 멈춘 상태면, 로컬 저장은 그대로 하되 화면 표시가 "저장 중…"에
+    // 멈춰있지 않도록 경고 상태를 유지함 (새로고침하면 다시 정상 동작)
+    if(loopGuardRef.current){ setSaveState("looped"); return; }
     setSaveState("saving");
     pendingStateRef.current=next;
     if(persistTimerRef.current) clearTimeout(persistTimerRef.current);
