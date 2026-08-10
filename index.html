@@ -194,6 +194,20 @@ async function loadFromFB(){
   }catch(e){ console.log('FB load err',e); }
   return null;
 }
+// 실시간 구독: 다른 기기에서 저장하면 이 함수가 즉시 콜백을 받아, 이 화면도 바로 최신 상태로 갱신됨
+// (예전 방식은 "켤 때 한 번만" 불러왔어서, 켜둔 채로 오래 두면 다른 기기의 변경사항을 놓치고
+//  그 상태에서 뭔가 수정하면 오래된 데이터로 서버를 덮어써버리는 문제가 있었음)
+function subscribeFB(onChange){
+  try{
+    if(!window._db) return null;
+    return window._db.doc(FS_DOC).onSnapshot((doc)=>{
+      if(!doc.exists) return;
+      const raw=doc.data().data;
+      if(!raw) return;
+      onChange(raw);
+    },(e)=>{ console.log('FB listen err',e); });
+  }catch(e){ console.log('FB subscribe err',e); return null; }
+}
 
 
 const DEFAULT_AM=["수원2","동탄2"];
@@ -424,30 +438,42 @@ function App(){
   const [catQuickAdd,setCatQuickAdd]=useState("");
   const [newCatName,setNewCatName]=useState("");
 
+  const lastWrittenRef=useRef(null);
+  const persistTimerRef=useRef(null);
+
   useEffect(()=>{
-    (async()=>{
+    // 1) 일단 로컬에 있던 걸로 바로 화면부터 띄움 (오프라인이어도 즉시 사용 가능)
+    try{
+      const raw=localStorage.getItem(STORAGE_KEY);
+      setStore(raw?normalStore(JSON.parse(raw)):initial());
+    }catch(e){setStore(initial());}
+
+    // 2) 서버(Firestore)를 실시간으로 구독 - 이 기기든 다른 기기든 누가 저장하면 즉시 반영됨
+    //    (예전엔 켤 때 한 번만 불러와서, 오래 켜두면 다른 기기 변경사항을 놓치고
+    //     그 상태에서 수정하면 옛날 데이터로 서버를 덮어써버리는 문제가 있었음)
+    const unsub=subscribeFB((raw)=>{
+      if(raw===lastWrittenRef.current) return; // 내가 방금 저장한 게 되돌아온 echo는 무시
       try{
-        const fbData=await loadFromFB();
-        if(fbData){
-          setStore(normalStore(fbData));
-          try{localStorage.setItem(STORAGE_KEY,JSON.stringify(fbData));}catch(e){}
-          return;
-        }
+        const parsed=JSON.parse(raw);
+        setStore(normalStore(parsed));
+        try{localStorage.setItem(STORAGE_KEY,raw);}catch(e){}
       }catch(e){}
-      try{
-        const raw=localStorage.getItem(STORAGE_KEY);
-        setStore(raw?normalStore(JSON.parse(raw)):initial());
-      }catch(e){setStore(initial());}
-    })();
+    });
+    return ()=>{ if(unsub) unsub(); };
   },[]);
 
   const persist=useCallback((next)=>{
-    setSaveState("saving");
     try{localStorage.setItem(STORAGE_KEY,JSON.stringify(next));}catch(e){}
-    saveToFB(next).finally(()=>{
-      setSaveState("saved");
-      setTimeout(()=>setSaveState("idle"),1000);
-    });
+    setSaveState("saving");
+    if(persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    persistTimerRef.current=setTimeout(()=>{
+      const json=JSON.stringify(next);
+      lastWrittenRef.current=json;
+      saveToFB(next).finally(()=>{
+        setSaveState("saved");
+        setTimeout(()=>setSaveState("idle"),1000);
+      });
+    },600);
   },[]);
 
   const upd=(fn)=>setStore((p)=>{const n=fn(p);persist(n);return n;});
