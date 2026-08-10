@@ -213,8 +213,10 @@ function isIdArray(v){return Array.isArray(v)&&v.length>0&&v.every((x)=>x&&typeo
 function toIdMap(arr){const m={};(arr||[]).forEach((x)=>{if(x&&x.id!=null)m[x.id]=x;});return m;}
 function mergeValue(base,mine,theirs){
   if(deepEqual(mine,theirs)) return mine;
-  if((Array.isArray(mine)||Array.isArray(theirs))&&(isIdArray(mine)||isIdArray(theirs)||isIdArray(base))){
-    return mergeIdArray(Array.isArray(base)?base:[],Array.isArray(mine)?mine:[],Array.isArray(theirs)?theirs:[]);
+  if(Array.isArray(mine)||Array.isArray(theirs)){
+    const baseArr=Array.isArray(base)?base:[],mineArr=Array.isArray(mine)?mine:[],theirsArr=Array.isArray(theirs)?theirs:[];
+    if(isIdArray(mineArr)||isIdArray(theirsArr)||isIdArray(baseArr)) return mergeIdArray(baseArr,mineArr,theirsArr);
+    return mergePrimitiveArray(baseArr,mineArr,theirsArr);
   }
   if(isPlainObject(mine)&&isPlainObject(theirs)&&(isPlainObject(base)||base===undefined||base===null)){
     const keys=new Set([...Object.keys(base||{}),...Object.keys(mine),...Object.keys(theirs)]);
@@ -243,6 +245,15 @@ function mergeIdArray(base,mine,theirs){
     if(inTheirs&&!inMine){ if(!inBase||!deepEqual(theirsMap[id],baseMap[id])) out.push(theirsMap[id]); }
   });
   return out;
+}
+// 이름 목록 같은 단순 배열(hiddenSwissRoutes, tabOrder 등)도 항목 단위로 3-way 병합.
+// base 대비 이 기기(mine)나 서버(theirs) 어느 한쪽에서만 지운 항목만 빼고, 추가된 항목은 양쪽 다 살림.
+function mergePrimitiveArray(base,mine,theirs){
+  const removedByMine=new Set(base.filter((x)=>!mine.includes(x)));
+  const removedByTheirs=new Set(base.filter((x)=>!theirs.includes(x)));
+  const union=[],seen=new Set();
+  [...base,...mine,...theirs].forEach((x)=>{if(!seen.has(x)){seen.add(x);union.push(x);}});
+  return union.filter((x)=>!removedByMine.has(x)&&!removedByTheirs.has(x));
 }
 
 // 서버 최신값과 3-way 병합해서 안전하게 저장 (트랜잭션으로 읽고-병합하고-쓰기를 원자적으로 처리)
@@ -455,9 +466,12 @@ function App(){
 
     let baselineRaw=null;
     try{ baselineRaw=localStorage.getItem(BASELINE_KEY); }catch(e){}
-    // 이 기기에서 병합 기준점을 처음 쓰는 경우, 로컬 캐시가 실제로 동기화됐던 상태인지
-    // 그냥 오래된 캐시인지 알 수 없으므로 안전하게 "서버를 우선 신뢰"하도록 로컬값을 기준점으로 둠
-    baselineRef.current=baselineRaw?normalStore(JSON.parse(baselineRaw)):localStore;
+    // 이 기기에서 병합 기준점을 처음 쓰는 경우 base를 비워둡니다(로컬값을 base로 삼지 않음).
+    // base가 로컬값과 같으면 "서버가 다르면 서버가 맞다"고 판단해버려서, 이 기기에만 있고
+    // 아직 서버로 못 올라간 항목(예: 아직 동기화 전 새 일정)을 "서버가 지운 것"으로 착각해
+    // 지워버리는 사고가 났었습니다. base를 비워두면 이 기기와 서버 둘 다의 값을 최대한 살리고,
+    // 정말 같은 항목을 서로 다르게 바꼈을 때만 이 기기 값을 우선하게 됩니다.
+    baselineRef.current=baselineRaw?normalStore(JSON.parse(baselineRaw)):null;
 
     // 2) 서버(Firestore)를 실시간으로 구독 - 이 기기든 다른 기기든 누가 저장하면 즉시 반영됨.
     //    예전엔 서버 값으로 화면을 통째로 덮어썼는데, 그러면 이 기기가 아직 서버에 못 올린
@@ -567,6 +581,7 @@ function App(){
   };
   const saveDay=()=>{
     upd((p)=>{const days={...p.days};days[sel]={am:dAm,pm:dPm,in:dIn,out:dOut,fuel:dFuel};return {...p,days};});
+    flushToFB(); // 0.6초 대기 없이 바로 클라우드로 전송 (여기서 앱을 닫아도 안전하도록)
     closeDay();
   };
   const clearDay=()=>{upd((p)=>{const days={...p.days};delete days[sel];return {...p,days};});closeDay();};
@@ -890,7 +905,10 @@ function App(){
 
       <div style={S.header}>
         <div><div style={S.title}>버스 운행 일정표</div></div>
-        <span style={{fontSize:12,color:saveState==="error"?"#d03030":"#6fae8a"}}>{saveState==="saving"?"저장 중…":saveState==="saved"?"저장됨 ✓":saveState==="error"?"저장 실패 (재시도 중…)":""}</span>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:12,color:saveState==="error"?"#d03030":"#6fae8a"}}>{saveState==="saving"?"저장 중…":saveState==="saved"?"저장됨 ✓":saveState==="error"?"저장 실패 (재시도 중…)":""}</span>
+          <button style={{border:"1px solid #3b6e8f",background:"transparent",color:"#3b6e8f",borderRadius:7,padding:"5px 10px",fontSize:12,cursor:"pointer",fontWeight:600}} onClick={flushToFB}>지금 저장</button>
+        </div>
       </div>
 
       <div style={S.tabRow}>
