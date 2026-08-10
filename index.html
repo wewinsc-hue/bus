@@ -14,6 +14,7 @@
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
   <script>
     firebase.initializeApp({
       apiKey: "AIzaSyAKtgc6ziQJzhoZKIm9mKxJ18SgmSn4M4Y",
@@ -24,6 +25,13 @@
       appId: "1:780809423285:web:5eb2925a6c16a041b631fc"
     });
     window._db = firebase.firestore();
+    // 익명 로그인: Firestore 보안 규칙을 "로그인한 사용자만 허용"으로 잠글 수 있도록 준비해둠
+    // (아직 규칙을 안 바꿨다면 지금과 동일하게 동작하므로 안전합니다)
+    window._authReady = (function(){
+      try{
+        return firebase.auth().signInAnonymously().catch(function(e){ console.log('auth err',e); });
+      }catch(e){ return Promise.resolve(); }
+    })();
   </script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -182,21 +190,77 @@ function getRouteColor(r){return ROUTE_COLORS[r]||EXTRA_ROUTE_COLORS[r]||EXTRA_C
 
 
 const FS_DOC = "users/changsik";
-async function saveToFB(data){
-  try{ if(window._db) await window._db.doc(FS_DOC).set({data:JSON.stringify(data)}); }
-  catch(e){ console.log('FB save err',e); }
+const BASELINE_KEY = "bus-schedule-baseline-v8";
+
+// ---- 기기 간 저장 충돌 방지용 3-way 병합 유틸 ----
+// 문제 상황: 예전에는 저장할 때마다 이 기기가 들고 있는 상태를 통째로 서버에 덮어썼습니다.
+// 그래서 폰에서 일정을 추가했는데 PC가 그걸 받기 전(오래된 상태)에 뭔가 저장하면
+// PC의 오래된 데이터가 서버 전체를 덮어써서 폰이 추가한 내용이 사라지는 문제가 있었습니다.
+// 지금부터는 "마지막으로 서버와 일치했던 상태(base)" 대비 "이 기기(mine)"와 "서버(theirs)"가
+// 각각 어떤 항목을 바꿨는지 필드 단위로 비교해서, 서로 다른 항목을 바꿨으면 둘 다 살리고
+// 같은 항목을 동시에 바꿨을 때만 이 기기의 값을 우선합니다.
+function isPlainObject(v){return v!==null&&typeof v==="object"&&!Array.isArray(v);}
+function deepEqual(a,b){
+  if(a===b) return true;
+  if(typeof a!==typeof b||a===null||b===null) return a===b;
+  if(typeof a!=="object") return a===b;
+  if(Array.isArray(a)!==Array.isArray(b)) return false;
+  const ak=Object.keys(a),bk=Object.keys(b);
+  if(ak.length!==bk.length) return false;
+  return ak.every((k)=>deepEqual(a[k],b[k]));
 }
-async function loadFromFB(){
-  try{
-    if(!window._db) return null;
-    const d = await window._db.doc(FS_DOC).get();
-    if(d.exists){ const r=d.data().data; return r?JSON.parse(r):null; }
-  }catch(e){ console.log('FB load err',e); }
-  return null;
+function isIdArray(v){return Array.isArray(v)&&v.length>0&&v.every((x)=>x&&typeof x==="object"&&typeof x.id==="string");}
+function toIdMap(arr){const m={};(arr||[]).forEach((x)=>{if(x&&x.id!=null)m[x.id]=x;});return m;}
+function mergeValue(base,mine,theirs){
+  if(deepEqual(mine,theirs)) return mine;
+  if((Array.isArray(mine)||Array.isArray(theirs))&&(isIdArray(mine)||isIdArray(theirs)||isIdArray(base))){
+    return mergeIdArray(Array.isArray(base)?base:[],Array.isArray(mine)?mine:[],Array.isArray(theirs)?theirs:[]);
+  }
+  if(isPlainObject(mine)&&isPlainObject(theirs)&&(isPlainObject(base)||base===undefined||base===null)){
+    const keys=new Set([...Object.keys(base||{}),...Object.keys(mine),...Object.keys(theirs)]);
+    const out={};
+    keys.forEach((k)=>{out[k]=mergeValue((base||{})[k],mine[k],theirs[k]);});
+    return out;
+  }
+  const mineChanged=!deepEqual(mine,base);
+  const theirsChanged=!deepEqual(theirs,base);
+  if(mineChanged&&!theirsChanged) return mine;
+  if(theirsChanged&&!mineChanged) return theirs;
+  if(!mineChanged&&!theirsChanged) return base!==undefined?base:mine;
+  return mine; // 같은 항목을 이 기기와 서버 양쪽에서 동시에 바꾼 경우: 이 기기의 조작을 우선
+}
+function mergeIdArray(base,mine,theirs){
+  const baseMap=toIdMap(base),mineMap=toIdMap(mine),theirsMap=toIdMap(theirs);
+  const order=[],seen=new Set();
+  mine.forEach((x)=>{if(x&&x.id!=null&&!seen.has(x.id)){seen.add(x.id);order.push(x.id);}});
+  theirs.forEach((x)=>{if(x&&x.id!=null&&!seen.has(x.id)){seen.add(x.id);order.push(x.id);}});
+  const out=[];
+  order.forEach((id)=>{
+    const inBase=id in baseMap,inMine=id in mineMap,inTheirs=id in theirsMap;
+    if(!inMine&&!inTheirs) return;
+    if(inMine&&inTheirs){ out.push(mergeValue(inBase?baseMap[id]:undefined,mineMap[id],theirsMap[id])); return; }
+    if(inMine&&!inTheirs){ if(!inBase||!deepEqual(mineMap[id],baseMap[id])) out.push(mineMap[id]); return; }
+    if(inTheirs&&!inMine){ if(!inBase||!deepEqual(theirsMap[id],baseMap[id])) out.push(theirsMap[id]); }
+  });
+  return out;
+}
+
+// 서버 최신값과 3-way 병합해서 안전하게 저장 (트랜잭션으로 읽고-병합하고-쓰기를 원자적으로 처리)
+async function saveToFB(next,baseline){
+  if(!window._db) return next;
+  if(window._authReady) await window._authReady;
+  let merged=next;
+  const ref=window._db.doc(FS_DOC);
+  await window._db.runTransaction(async (tx)=>{
+    const snap=await tx.get(ref);
+    const serverRaw=snap.exists?snap.data().data:null;
+    const server=serverRaw?normalStore(JSON.parse(serverRaw)):null;
+    merged=server?mergeValue(baseline,next,server):next;
+    tx.set(ref,{data:JSON.stringify(merged)});
+  });
+  return merged;
 }
 // 실시간 구독: 다른 기기에서 저장하면 이 함수가 즉시 콜백을 받아, 이 화면도 바로 최신 상태로 갱신됨
-// (예전 방식은 "켤 때 한 번만" 불러왔어서, 켜둔 채로 오래 두면 다른 기기의 변경사항을 놓치고
-//  그 상태에서 뭔가 수정하면 오래된 데이터로 서버를 덮어써버리는 문제가 있었음)
 function subscribeFB(onChange){
   try{
     if(!window._db) return null;
@@ -240,104 +304,13 @@ function buildGrid(y,m){
   return c;
 }
 
-const SEED_DAYS={"2026-06-01":{am:["수원2","동탄2","외대"],pm:["신영통","동탄2","중앙문","외대"]},"2026-06-02":{am:["수원2","동탄2"],pm:["동탄SDI","동탄2","중앙문"]},"2026-06-03":{am:["공휴일"],pm:[]},"2026-06-04":{am:["수원2","동탄2"],pm:["망포역,망포동","중앙문"]},"2026-06-05":{am:["수원2","동탄2","외부"],pm:[]},"2026-06-08":{am:["수원2","동탄2"],pm:["중앙문","동탄2"]},"2026-06-09":{am:["수원2","동탄2"],pm:["중앙문","동탄2"]},"2026-06-10":{am:["수원2","동탄2","외대"],pm:["동탄2","중앙문","외대"]},"2026-06-11":{am:["수원2","동탄2","외부"],pm:["동탄2","중앙문"]},"2026-06-12":{am:["수원2","동탄2","외부"],pm:["중앙문"]},"2026-06-13":{am:["외부"],pm:[]},"2026-06-14":{am:["외부"],pm:[]},"2026-06-15":{am:["수원2","동탄2"],pm:["동탄2","중앙문"]},"2026-06-16":{am:["수원2","동탄2"],pm:["동탄2","중앙문"]},"2026-06-17":{am:["수원2","동탄2"],pm:["동탄2","중앙문"]},"2026-06-18":{am:["수원2","동탄2"],pm:["동탄2","중앙문"]},"2026-06-19":{am:["수원2","동탄2"],pm:["동탄2","중앙문"]},"2026-06-20":{am:["외부"],pm:[]},"2026-06-22":{am:["수원2","동탄2"],pm:["동탄2","중앙문"]},"2026-06-23":{am:["수원2","동탄2"],pm:["동탄2","중앙문"]},"2026-06-24":{am:["수원2","동탄2"],pm:["동탄2","중앙문"]},"2026-06-25":{am:["수원2","동탄2"],pm:["중앙문","동탄2"]},"2026-06-26":{am:["수원2","동탄2"],pm:["중앙문","동탄2"]},"2026-06-27":{am:["외부"],pm:[]},"2026-06-28":{am:["외부"],pm:[]},"2026-06-29":{am:["수원2","동탄2"],pm:["중앙문","동탄2"]},"2026-06-30":{am:["수원2","동탄2"],pm:["중앙문","동탄2"]}};
-const SEED_CHARTERS=[{id:"c1",date:"2026-06-05",desc:"김종성 사당역==>남이섬",amount:700000,paid:true},{id:"c2",date:"2026-06-11",desc:"찬영 인천공항===>추부",amount:650000,paid:true},{id:"c3",date:"2026-06-12",desc:"찬영 청주===>강남 공군사관학교",amount:500000,paid:true},{id:"c4",date:"2026-06-13",desc:"매봉산악회 월류봉",amount:800000,paid:true},{id:"c5",date:"2026-06-14",desc:"재경망월 사당역===>덕유산",amount:850000,paid:true},{id:"c6",date:"2026-06-20",desc:"으뜸산악회",amount:912000,paid:true},{id:"c7",date:"2026-06-27",desc:"원칠사모 정선 항골계곡",amount:800000,paid:true},{id:"c8",date:"2026-06-28",desc:"럭셔리",amount:750000,paid:true}];
-const SEED_LOANS=[{
-    id:"loan40m",
-    title:"조병용 4천만원 대출 (삼성카드2천만 + 국민카드2천만)",
-    creditor:"손창식",
-    debtor:"조병용",
-    principal:40000000,
-    memo:"삼성카드 2천만원 + 국민카드 2천만원. 매월 25일 납부. 총 36회차 (2026.04~2029.03). 삼성카드 합계 22,946,539원 / 국민카드 합계 24,098,676원 / 총 상환 47,045,215원.",
-    installments:[
-      {id:"l40m1",seq:1,amount:1673952,paid:true,memo:"2026-04-25 | 삼성 786,178 + 국민 887,774 | 청구 1,775,549 (납입 3/11)"},
-      {id:"l40m2",seq:2,amount:1461794,paid:true,memo:"2026-05-25 | 삼성 700,075 + 국민 761,719 | 청구 1,523,439 (납입 4/21)"},
-      {id:"l40m3",seq:3,amount:1463294,paid:true,memo:"2026-06-25 | 삼성 700,790 + 국민 762,504 | 청구 1,525,010 (납입 5/23)"},
-      {id:"l40m4",seq:4,amount:1455873,paid:true,memo:"2026-07-25 | 삼성 705,935 + 국민 749,938 | 청구 1,499,878 (납입 5/24)"},
-      {id:"l40m5",seq:5,amount:1437971,paid:false,memo:"2026-08-25 | 삼성 687,640 + 국민 750,331 | 청구 1,500,663"},
-      {id:"l40m6",seq:6,amount:1449893,paid:false,memo:"2026-09-25 | 삼성 705,649 + 국민 744,244 | 청구 1,488,490"},
-      {id:"l40m7",seq:7,amount:1407329,paid:false,memo:"2026-10-25 | 삼성 675,062 + 국민 732,267 | 청구 1,464,535"},
-      {id:"l40m8",seq:8,amount:1411421,paid:false,memo:"2026-11-25 | 삼성 679,350 + 국민 732,071 | 청구 1,464,142"},
-      {id:"l40m9",seq:9,amount:1407554,paid:false,memo:"2026-12-25 | 삼성 687,068 + 국민 720,486 | 청구 1,440,974"},
-      {id:"l40m10",seq:10,amount:1382953,paid:false,memo:"2027-01-25 | 삼성 663,056 + 국민 719,897 | 청구 1,439,795"},
-      {id:"l40m11",seq:11,amount:1384012,paid:false,memo:"2027-02-25 | 삼성 670,202 + 국민 713,810 | 청구 1,427,622"},
-      {id:"l40m12",seq:12,amount:1348049,paid:false,memo:"2027-03-25 | 삼성 655,052 + 국민 692,997 | 청구 1,385,996"},
-      {id:"l40m13",seq:13,amount:1366408,paid:false,memo:"2027-04-25 | 삼성 664,771 + 국민 701,637 | 청구 1,408,275"},
-      {id:"l40m14",seq:14,amount:1341369,paid:false,memo:"2027-05-25 | 삼성 650,335 + 국민 691,034 | 청구 1,382,069"},
-      {id:"l40m15",seq:15,amount:1341942,paid:false,memo:"2027-06-25 | 삼성 652,479 + 국민 689,463 | 청구 1,378,928"},
-      {id:"l40m16",seq:16,amount:1327301,paid:false,memo:"2027-07-25 | 삼성 648,048 + 국민 679,253 | 청구 1,358,508"},
-      {id:"l40m17",seq:17,amount:1318048,paid:false,memo:"2027-08-25 | 삼성 640,758 + 국민 677,290 | 청구 1,354,581"},
-      {id:"l40m18",seq:18,amount:1315821,paid:false,memo:"2027-09-25 | 삼성 644,618 + 국민 671,203 | 청구 1,342,407"},
-      {id:"l40m19",seq:19,amount:1288619,paid:false,memo:"2027-10-25 | 삼성 627,037 + 국민 661,582 | 청구 1,323,165"},
-      {id:"l40m20",seq:20,amount:1289354,paid:false,memo:"2027-11-25 | 삼성 630,324 + 국민 659,030 | 청구 1,318,060"},
-      {id:"l40m21",seq:21,amount:1280268,paid:false,memo:"2027-12-25 | 삼성 630,467 + 국민 649,801 | 청구 1,299,604"},
-      {id:"l40m22",seq:22,amount:1261546,paid:false,memo:"2028-01-25 | 삼성 614,884 + 국민 646,662 | 청구 1,293,326"},
-      {id:"l40m23",seq:23,amount:1257398,paid:false,memo:"2028-02-25 | 삼성 616,862 + 국민 640,536 | 청구 1,281,074"},
-      {id:"l40m24",seq:24,amount:1241819,paid:false,memo:"2028-03-25 | 삼성 612,444 + 국민 629,375 | 청구 1,258,752"},
-      {id:"l40m25",seq:25,amount:1233000,paid:false,memo:"2028-04-25 | 삼성 604,604 + 국민 628,396 | 청구 1,256,794"},
-      {id:"l40m26",seq:26,amount:1222210,paid:false,memo:"2028-05-25 | 삼성 602,038 + 국민 620,172 | 청구 1,240,346"},
-      {id:"l40m27",seq:27,amount:1216869,paid:false,memo:"2028-06-25 | 삼성 600,613 + 국민 616,256 | 청구 1,232,513"},
-      {id:"l40m28",seq:28,amount:1200627,paid:false,memo:"2028-07-25 | 삼성 592,203 + 국민 608,424 | 청구 1,216,848"},
-      {id:"l40m29",seq:29,amount:1194466,paid:false,memo:"2028-08-25 | 삼성 590,350 + 국민 604,116 | 청구 1,208,233"},
-      {id:"l40m30",seq:30,amount:1183977,paid:false,memo:"2028-09-25 | 삼성 585,931 + 국민 598,046 | 청구 1,196,092"},
-      {id:"l40m31",seq:31,amount:1171458,paid:false,memo:"2028-10-25 | 삼성 580,657 + 국민 590,801 | 청구 1,181,602"},
-      {id:"l40m32",seq:32,amount:1164424,paid:false,memo:"2028-11-25 | 삼성 578,519 + 국민 585,905 | 청구 1,171,812"},
-      {id:"l40m33",seq:33,amount:1150586,paid:false,memo:"2028-12-25 | 삼성 571,534 + 국민 579,052 | 청구 1,158,105"},
-      {id:"l40m34",seq:34,amount:1141661,paid:false,memo:"2029-01-25 | 삼성 567,857 + 국민 573,804 | 청구 1,147,609"},
-      {id:"l40m35",seq:35,amount:1131875,paid:false,memo:"2029-02-25 | 삼성 564,147 + 국민 567,728 | 청구 1,135,458"},
-      {id:"l40m36",seq:36,amount:1120074,paid:false,memo:"2029-03-25 | 삼성 559,002 + 국민 561,072 | 청구 1,122,110"}
-    ]
-  },{
-  id:"loan1",title:"조병용 차용증 (9,950,000원)",creditor:"손창식",debtor:"조병용",principal:9950000,memo:"현금 5,000,000원 + 외대 운송료 등 상계 4,950,000원. 기존 금전소비대차(40,000,000원, 차량 서울72바6053호 담보) 및 자동차매매계약서와 연계.",installments:[
-    {id:"i1",seq:1,amount:1585000,paid:false,memo:"1회차 (7월 20일)"},
-    {id:"i2",seq:2,amount:1585000,paid:false,memo:"2회차 (8월 20일)"},
-    {id:"i3",seq:3,amount:1585000,paid:false,memo:"3회차 (9월 20일)"},
-    {id:"i4",seq:4,amount:1585000,paid:false,memo:"4회차 (10월 20일)"},
-    {id:"i5",seq:5,amount:1585000,paid:false,memo:"5회차 (11월 20일)"},
-    {id:"i6",seq:6,amount:2025000,paid:false,memo:"6회차 (12월 20일)"}
-  ]},{
-  id:"loanVehicle",
-  title:"차량 할부금 (74바6482)",
-  creditor:"",
-  debtor:"74바6482",
-  principal:100274500,
-  memo:"차량 할부금. 매월 1일 납부. 총 34회차 (2025.09~2028.06). 회당 2,949,250원. 총 상환 100,274,500원.",
-  installments:[
-    {id:"lv1",seq:1,amount:2949250,paid:true,memo:"2025년 09월 01일"},
-    {id:"lv2",seq:2,amount:2949250,paid:true,memo:"2025년 10월 01일"},
-    {id:"lv3",seq:3,amount:2949250,paid:true,memo:"2025년 11월 01일"},
-    {id:"lv4",seq:4,amount:2949250,paid:true,memo:"2025년 12월 01일"},
-    {id:"lv5",seq:5,amount:2949250,paid:true,memo:"2026년 01월 01일"},
-    {id:"lv6",seq:6,amount:2949250,paid:true,memo:"2026년 02월 01일"},
-    {id:"lv7",seq:7,amount:2949250,paid:true,memo:"2026년 03월 01일"},
-    {id:"lv8",seq:8,amount:2949250,paid:true,memo:"2026년 04월 01일"},
-    {id:"lv9",seq:9,amount:2949250,paid:true,memo:"2026년 05월 01일"},
-    {id:"lv10",seq:10,amount:2949250,paid:true,memo:"2026년 06월 01일"},
-    {id:"lv11",seq:11,amount:2949250,paid:false,memo:"2026년 07월 01일"},
-    {id:"lv12",seq:12,amount:2949250,paid:false,memo:"2026년 08월 01일"},
-    {id:"lv13",seq:13,amount:2949250,paid:false,memo:"2026년 09월 01일"},
-    {id:"lv14",seq:14,amount:2949250,paid:false,memo:"2026년 10월 01일"},
-    {id:"lv15",seq:15,amount:2949250,paid:false,memo:"2026년 11월 01일"},
-    {id:"lv16",seq:16,amount:2949250,paid:false,memo:"2026년 12월 01일"},
-    {id:"lv17",seq:17,amount:2949250,paid:false,memo:"2027년 01월 01일"},
-    {id:"lv18",seq:18,amount:2949250,paid:false,memo:"2027년 02월 01일"},
-    {id:"lv19",seq:19,amount:2949250,paid:false,memo:"2027년 03월 01일"},
-    {id:"lv20",seq:20,amount:2949250,paid:false,memo:"2027년 04월 01일"},
-    {id:"lv21",seq:21,amount:2949250,paid:false,memo:"2027년 05월 01일"},
-    {id:"lv22",seq:22,amount:2949250,paid:false,memo:"2027년 06월 01일"},
-    {id:"lv23",seq:23,amount:2949250,paid:false,memo:"2027년 07월 01일"},
-    {id:"lv24",seq:24,amount:2949250,paid:false,memo:"2027년 08월 01일"},
-    {id:"lv25",seq:25,amount:2949250,paid:false,memo:"2027년 09월 01일"},
-    {id:"lv26",seq:26,amount:2949250,paid:false,memo:"2027년 10월 01일"},
-    {id:"lv27",seq:27,amount:2949250,paid:false,memo:"2027년 11월 01일"},
-    {id:"lv28",seq:28,amount:2949250,paid:false,memo:"2027년 12월 01일"},
-    {id:"lv29",seq:29,amount:2949250,paid:false,memo:"2028년 01월 01일"},
-    {id:"lv30",seq:30,amount:2949250,paid:false,memo:"2028년 02월 01일"},
-    {id:"lv31",seq:31,amount:2949250,paid:false,memo:"2028년 03월 01일"},
-    {id:"lv32",seq:32,amount:2949250,paid:false,memo:"2028년 04월 01일"},
-    {id:"lv33",seq:33,amount:2949250,paid:false,memo:"2028년 05월 01일"},
-    {id:"lv34",seq:34,amount:2949250,paid:false,memo:"2028년 06월 01일"}
-  ]}];
+// 예전엔 여기에 실명·대출금액이 초기값(seed)으로 그대로 하드코딩되어 있었습니다.
+// 이미 Firestore에 실제 데이터가 저장돼 있어 이 초기값은 화면에 쓰이지 않는 죽은 데이터였고,
+// 이 HTML 파일 자체가 공유되면 개인정보가 그대로 노출되는 문제가 있어 비워뒀습니다.
+// (기존에 Firestore/로컬에 저장된 실제 데이터는 이 변경과 무관하게 그대로 유지됩니다.)
+const SEED_DAYS={};
+const SEED_CHARTERS=[];
+const SEED_LOANS=[];
 
 function makeDays(){
   const d={};
@@ -440,41 +413,94 @@ function App(){
 
   const lastWrittenRef=useRef(null);
   const persistTimerRef=useRef(null);
+  const pendingStateRef=useRef(null);
+  const baselineRef=useRef(null); // 마지막으로 서버와 일치했던 상태 (3-way 병합 기준점)
+  const storeRef=useRef(null);
+  useEffect(()=>{storeRef.current=store;},[store]);
+
+  const flushToFB=useCallback(()=>{
+    if(persistTimerRef.current){ clearTimeout(persistTimerRef.current); persistTimerRef.current=null; }
+    const next=pendingStateRef.current;
+    if(next===null) return;
+    pendingStateRef.current=null;
+    setSaveState("saving");
+    saveToFB(next,baselineRef.current).then((merged)=>{
+      const json=JSON.stringify(merged);
+      lastWrittenRef.current=json;
+      baselineRef.current=merged;
+      try{
+        localStorage.setItem(STORAGE_KEY,json);
+        localStorage.setItem(BASELINE_KEY,json);
+      }catch(e){}
+      // 병합 결과에 다른 기기의 변경사항이 함께 반영됐다면 화면도 그 값으로 갱신
+      setStore((cur)=>deepEqual(cur,merged)?cur:merged);
+      setSaveState("saved");
+      setTimeout(()=>setSaveState("idle"),1000);
+    }).catch((e)=>{
+      console.log('FB save err',e);
+      // 실패한 저장은 버리지 않고 재시도 대기열에 남겨서 데이터가 유실되지 않게 함
+      pendingStateRef.current=next;
+      setSaveState("error");
+      if(persistTimerRef.current) clearTimeout(persistTimerRef.current);
+      persistTimerRef.current=setTimeout(flushToFB,5000);
+    });
+  },[]);
 
   useEffect(()=>{
     // 1) 일단 로컬에 있던 걸로 바로 화면부터 띄움 (오프라인이어도 즉시 사용 가능)
-    try{
-      const raw=localStorage.getItem(STORAGE_KEY);
-      setStore(raw?normalStore(JSON.parse(raw)):initial());
-    }catch(e){setStore(initial());}
+    let raw=null;
+    try{ raw=localStorage.getItem(STORAGE_KEY); }catch(e){}
+    const localStore=raw?normalStore(JSON.parse(raw)):initial();
+    setStore(localStore);
 
-    // 2) 서버(Firestore)를 실시간으로 구독 - 이 기기든 다른 기기든 누가 저장하면 즉시 반영됨
-    //    (예전엔 켤 때 한 번만 불러와서, 오래 켜두면 다른 기기 변경사항을 놓치고
-    //     그 상태에서 수정하면 옛날 데이터로 서버를 덮어써버리는 문제가 있었음)
-    const unsub=subscribeFB((raw)=>{
-      if(raw===lastWrittenRef.current) return; // 내가 방금 저장한 게 되돌아온 echo는 무시
-      try{
-        const parsed=JSON.parse(raw);
-        setStore(normalStore(parsed));
-        try{localStorage.setItem(STORAGE_KEY,raw);}catch(e){}
-      }catch(e){}
+    let baselineRaw=null;
+    try{ baselineRaw=localStorage.getItem(BASELINE_KEY); }catch(e){}
+    // 이 기기에서 병합 기준점을 처음 쓰는 경우, 로컬 캐시가 실제로 동기화됐던 상태인지
+    // 그냥 오래된 캐시인지 알 수 없으므로 안전하게 "서버를 우선 신뢰"하도록 로컬값을 기준점으로 둠
+    baselineRef.current=baselineRaw?normalStore(JSON.parse(baselineRaw)):localStore;
+
+    // 2) 서버(Firestore)를 실시간으로 구독 - 이 기기든 다른 기기든 누가 저장하면 즉시 반영됨.
+    //    예전엔 서버 값으로 화면을 통째로 덮어썼는데, 그러면 이 기기가 아직 서버에 못 올린
+    //    변경사항이 사라질 수 있었습니다. 지금은 기준점(baseline) 대비 이 기기(mine)와
+    //    서버(theirs)가 각각 바꾼 부분만 골라 병합해서, 두 기기의 변경사항이 서로 지워지지 않게 합니다.
+    const unsub=subscribeFB((raw2)=>{
+      if(raw2===lastWrittenRef.current) return; // 내가 방금 저장한 게 되돌아온 echo는 무시
+      let theirs;
+      try{ theirs=normalStore(JSON.parse(raw2)); }catch(e){ return; }
+      const mine=storeRef.current||localStore;
+      const merged=mergeValue(baselineRef.current,mine,theirs);
+      baselineRef.current=merged;
+      try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(merged)); localStorage.setItem(BASELINE_KEY,JSON.stringify(merged)); }catch(e){}
+      setStore(merged);
+      // 이 기기에만 있던 변경사항이 병합 결과에 남아있다면(=서버가 아직 모르는 내용) 다시 저장해서 올려보냄
+      if(!deepEqual(merged,theirs)) persist(merged);
     });
-    return ()=>{ if(unsub) unsub(); };
+
+    // 3) 화면을 끄거나(백그라운드로 전환) 앱/탭을 닫기 직전엔, 아직 서버로 안 나간 저장이
+    //    남아있으면 그 즉시 강제로 내보냄 (0.6초 대기 중이던 저장이 씹히는 것 방지)
+    const onHide=()=>{ flushToFB(); };
+    const onVis=()=>{ if(document.visibilityState==="hidden") flushToFB(); };
+    document.addEventListener("visibilitychange",onVis);
+    window.addEventListener("pagehide",onHide);
+    window.addEventListener("beforeunload",onHide);
+    window.addEventListener("online",flushToFB);
+
+    return ()=>{
+      if(unsub) unsub();
+      document.removeEventListener("visibilitychange",onVis);
+      window.removeEventListener("pagehide",onHide);
+      window.removeEventListener("beforeunload",onHide);
+      window.removeEventListener("online",flushToFB);
+    };
   },[]);
 
   const persist=useCallback((next)=>{
     try{localStorage.setItem(STORAGE_KEY,JSON.stringify(next));}catch(e){}
     setSaveState("saving");
+    pendingStateRef.current=next;
     if(persistTimerRef.current) clearTimeout(persistTimerRef.current);
-    persistTimerRef.current=setTimeout(()=>{
-      const json=JSON.stringify(next);
-      lastWrittenRef.current=json;
-      saveToFB(next).finally(()=>{
-        setSaveState("saved");
-        setTimeout(()=>setSaveState("idle"),1000);
-      });
-    },600);
-  },[]);
+    persistTimerRef.current=setTimeout(flushToFB,600);
+  },[flushToFB]);
 
   const upd=(fn)=>setStore((p)=>{const n=fn(p);persist(n);return n;});
   const monthStr=mk(year,month);
@@ -771,12 +797,10 @@ function App(){
   },[store,monthStr,charterList]);
 
   const allRows=useMemo(()=>[...autoRows,...manualRows].sort((a,b)=>a.date.localeCompare(b.date)),[autoRows,manualRows]);
-  const totIncome=useMemo(()=>carryover+allRows.reduce((s,r)=>r.type==="income"?s+r.amount:s,0),[carryover,allRows]);
   const cashExpense=useMemo(()=>allRows.reduce((s,r)=>(r.type==="expense"&&r.payMethod==="현금")?s+r.amount:s,0),[allRows]);
   const incomeSum=useMemo(()=>allRows.reduce((s,r)=>r.type==="income"?s+r.amount:s,0),[allRows]);
   const totalExpense=useMemo(()=>allRows.reduce((s,r)=>r.type==="expense"?s+r.amount:s,0),[allRows]);
   const bankBalance=useMemo(()=>carryover+incomeSum-cashExpense,[carryover,incomeSum,cashExpense]);
-  const totExpense=useMemo(()=>allRows.reduce((s,r)=>r.type==="expense"?s+r.amount:s,0),[allRows]);
 
   const cardTotals=useMemo(()=>{
     const t={};cardNames.forEach((c)=>{t[c]=0;});
@@ -866,7 +890,7 @@ function App(){
 
       <div style={S.header}>
         <div><div style={S.title}>버스 운행 일정표</div></div>
-        <span style={{fontSize:12,color:"#6fae8a"}}>{saveState==="saving"?"저장 중…":saveState==="saved"?"저장됨 ✓":saveState==="error"?"저장 실패":""}</span>
+        <span style={{fontSize:12,color:saveState==="error"?"#d03030":"#6fae8a"}}>{saveState==="saving"?"저장 중…":saveState==="saved"?"저장됨 ✓":saveState==="error"?"저장 실패 (재시도 중…)":""}</span>
       </div>
 
       <div style={S.tabRow}>
