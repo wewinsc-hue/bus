@@ -429,11 +429,7 @@ function App(){
   const storeRef=useRef(null);
   useEffect(()=>{storeRef.current=store;},[store]);
 
-  const flushToFB=useCallback(()=>{
-    if(persistTimerRef.current){ clearTimeout(persistTimerRef.current); persistTimerRef.current=null; }
-    const next=pendingStateRef.current;
-    if(next===null) return;
-    pendingStateRef.current=null;
+  const commitSave=useCallback((next)=>{
     setSaveState("saving");
     saveToFB(next,baselineRef.current).then((merged)=>{
       const json=JSON.stringify(merged);
@@ -456,6 +452,24 @@ function App(){
       persistTimerRef.current=setTimeout(flushToFB,5000);
     });
   },[]);
+
+  const flushToFB=useCallback(()=>{
+    if(persistTimerRef.current){ clearTimeout(persistTimerRef.current); persistTimerRef.current=null; }
+    const next=pendingStateRef.current;
+    if(next===null) return;
+    pendingStateRef.current=null;
+    commitSave(next);
+  },[commitSave]);
+
+  // "지금 저장" 버튼 전용: 대기 중인 변경사항이 없어도(=이미 저장된 상태여도) 항상 서버와 한 번
+  // 확인·전송해서 "저장 중… → 저장됨" 표시가 뜨게 함 (버튼 눌러도 반응이 없어 보이던 문제 해결)
+  const saveNow=useCallback(()=>{
+    if(persistTimerRef.current){ clearTimeout(persistTimerRef.current); persistTimerRef.current=null; }
+    const next=pendingStateRef.current!==null?pendingStateRef.current:storeRef.current;
+    pendingStateRef.current=null;
+    if(!next) return;
+    commitSave(next);
+  },[commitSave]);
 
   useEffect(()=>{
     // 1) 일단 로컬에 있던 걸로 바로 화면부터 띄움 (오프라인이어도 즉시 사용 가능)
@@ -907,7 +921,7 @@ function App(){
         <div><div style={S.title}>버스 운행 일정표</div></div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:12,color:saveState==="error"?"#d03030":"#6fae8a"}}>{saveState==="saving"?"저장 중…":saveState==="saved"?"저장됨 ✓":saveState==="error"?"저장 실패 (재시도 중…)":""}</span>
-          <button style={{border:"1px solid #3b6e8f",background:"transparent",color:"#3b6e8f",borderRadius:7,padding:"5px 10px",fontSize:12,cursor:"pointer",fontWeight:600}} onClick={flushToFB}>지금 저장</button>
+          <button style={{border:"1px solid #3b6e8f",background:"transparent",color:"#3b6e8f",borderRadius:7,padding:"5px 10px",fontSize:12,cursor:"pointer",fontWeight:600}} onClick={saveNow}>지금 저장</button>
         </div>
       </div>
 
