@@ -43,7 +43,7 @@
   <script type="text/babel">
     const {useState,useEffect,useMemo,useCallback,useRef}=React;
 
-const ROUTES = ["수원2","동탄2","중앙문","외대","동탄SDI","동탄대차","신영통","잠실","동탄셔틀","천안,동탄","망포역,망포동","외부","공휴일"];
+const ROUTES = ["수원2","동탄2","경희대/중앙문","외대","동탄SDI","동탄대차","신영통","잠실","동탄셔틀","천안,동탄","망포역,망포동","외부","공휴일"];
 const PRICED_ROUTES = ROUTES.filter((r)=>!["외부","외대","공휴일"].includes(r));
 // 대한민국 법정 공휴일 (2025~2027, 관공서 공휴일 규정 기준). 향후 임시공휴일이 새로 발표되면 이 표에 추가해야 합니다.
 const HOLIDAYS = {
@@ -113,7 +113,7 @@ const HOLIDAYS = {
 const ROUTE_COLORS = {
   "수원2":"#2563eb",
   "동탄2":"#16a34a",
-  "중앙문":"#d97706",
+  "경희대/중앙문":"#d97706",
   "외대":"#7c3aed",
   "동탄SDI":"#0891b2",
   "동탄대차":"#9333ea",
@@ -125,7 +125,7 @@ const ROUTE_COLORS = {
   "외부":"#e03030",
   "공휴일":"#64748b"
 };
-const DEFAULT_PRICES = {"수원2":123400,"동탄2":112300,"중앙문":96000,"외대":155000,"동탄SDI":0,"동탄대차":0,"신영통":123400,"잠실":176900,"동탄셔틀":0,"천안,동탄":400000,"망포역,망포동":96000,"외부":0,"공휴일":0};
+const DEFAULT_PRICES = {"수원2":123400,"동탄2":112300,"경희대/중앙문":96000,"외대":155000,"동탄SDI":0,"동탄대차":0,"신영통":123400,"잠실":176900,"동탄셔틀":0,"천안,동탄":400000,"망포역,망포동":96000,"외부":0,"공휴일":0};
 const DEFAULT_DEDUCTIONS = Object.fromEntries(ROUTES.map((r)=>[r,0]));
 const DEFAULT_WAEDAE = {amPrice:160000,amIncome:150000,pmPrice:150000,pmIncome:150000};
 
@@ -291,7 +291,12 @@ function subscribeFB(onChange){
 
 
 const DEFAULT_AM=["수원2","동탄2"];
-const DEFAULT_PM=["동탄2","중앙문"];
+const DEFAULT_PM=["동탄2","경희대/중앙문"];
+// 노선명 변경 이력: 예전에 "중앙문"으로 저장했던 날짜 데이터는 손대지 않고,
+// 불러올 때(normalDay)만 새 이름으로 자동 치환해서 보여주고 집계합니다.
+const ROUTE_NAME_ALIASES = {"중앙문":"경희대/중앙문"};
+function aliasRouteName(r){return ROUTE_NAME_ALIASES[r]||r;}
+function aliasRouteList(arr){return (arr||[]).map(aliasRouteName);}
 function getEffectiveDay(key,store){
   const stored=store?.days?.[key];
   // 사용자가 명시적으로 저장한 날(빈 값이어도)은 그대로 존중 - 더 이상 자동으로 기본노선이 되살아나지 않음
@@ -341,8 +346,8 @@ function initial(){
 }
 function normalDay(d){
   if(!d) return {am:[],pm:[],in:"",out:"",fuel:""};
-  if(Array.isArray(d.routes)) return {am:d.routes,pm:[],in:d.in||"",out:d.out||"",fuel:d.fuel||""};
-  return {am:d.am||[],pm:d.pm||[],in:d.in||"",out:d.out||"",fuel:d.fuel||""};
+  if(Array.isArray(d.routes)) return {am:aliasRouteList(d.routes),pm:[],in:d.in||"",out:d.out||"",fuel:d.fuel||""};
+  return {am:aliasRouteList(d.am),pm:aliasRouteList(d.pm),in:d.in||"",out:d.out||"",fuel:d.fuel||""};
 }
 function normalStore(s){
   const days={};
