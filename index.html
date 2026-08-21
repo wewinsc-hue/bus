@@ -427,7 +427,7 @@ function App(){
     setDragTabOrderKeys(null);
   };
   const renameTab=(id,label)=>upd((p)=>({...p,tabLabels:{...(p.tabLabels||{}),[id]:label}}));
-  const [newEnt,setNewEnt]=useState({date:"",type:"expense",desc:"",amount:"",payMethod:"현금",category:""});
+  const [newEnt,setNewEnt]=useState(()=>({date:ymd(today.getFullYear(),today.getMonth()+1,today.getDate()),type:"expense",desc:"",amount:"",payMethod:"현금",category:""}));
   const [catDropdownOpen,setCatDropdownOpen]=useState(false);
   const [catQuickAdd,setCatQuickAdd]=useState("");
   const [newCatName,setNewCatName]=useState("");
@@ -844,7 +844,36 @@ function App(){
 
   // 장부
   const ledgerMonth=useMemo(()=>store?store.ledger.filter((e)=>e.date?.startsWith(monthStr)).sort((a,b)=>a.date.localeCompare(b.date)):[],[store,monthStr]);
-  const carryover=useMemo(()=>Number(ledgerMonth.find((e)=>e.type==="carryover")?.amount)||0,[ledgerMonth]);
+  // 이월 잔액 자동 계산: 해당 달에 사용자가 직접 입력한 이월 항목이 있으면 그 값을 그대로 쓰고(수동 우선),
+  // 없으면 전달의 "이월+수입-현금지출" 결과를 자동으로 이어받습니다. 데이터가 전혀 없는 달을 만나거나
+  // 36개월(3년) 넘게 거슬러 올라가면 더 계산하지 않고 0으로 멈춥니다(무한 소급 방지).
+  function computeMonthFinance(y,m,depth=0){
+    const mstr=mk(y,m);
+    const monthLedger=(store?.ledger||[]).filter((e)=>e.date?.startsWith(mstr));
+    const manual=monthLedger.filter((e)=>e.type!=="carryover");
+    const explicitCarry=monthLedger.find((e)=>e.type==="carryover");
+    const charterIncome=(store?.charters||[]).filter((c)=>c.date?.startsWith(mstr)&&c.paid).reduce((s,c)=>s+(Number(c.amount)||0),0);
+    const ledgerIncome=manual.filter((e)=>e.type==="income").reduce((s,e)=>s+(Number(e.amount)||0),0);
+    const income=charterIncome+ledgerIncome;
+    const cashExp=manual.filter((e)=>e.type==="expense"&&e.payMethod==="현금").reduce((s,e)=>s+(Number(e.amount)||0),0);
+    let carry;
+    if(explicitCarry){
+      carry=Number(explicitCarry.amount)||0;
+    }else if((monthLedger.length===0&&charterIncome===0)||depth>=36){
+      carry=0;
+    }else{
+      const py=m===1?y-1:y,pm=m===1?12:m-1;
+      carry=computeMonthFinance(py,pm,depth+1).ending;
+    }
+    return {carry,income,cashExp,ending:carry+income-cashExp};
+  }
+  const carryover=useMemo(()=>{
+    if(!store) return 0;
+    const explicit=ledgerMonth.find((e)=>e.type==="carryover");
+    if(explicit) return Number(explicit.amount)||0;
+    const py=month===1?year-1:year,pm=month===1?12:month-1;
+    return computeMonthFinance(py,pm,0).ending;
+  },[store,ledgerMonth,year,month]);
   const manualRows=useMemo(()=>ledgerMonth.filter((e)=>e.type!=="carryover"),[ledgerMonth]);
 
   const autoRows=useMemo(()=>{
