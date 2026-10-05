@@ -434,6 +434,7 @@ function App(){
   const [newCatName,setNewCatName]=useState("");
   const [descDropdownOpen,setDescDropdownOpen]=useState(false);
   const [descQuickAdd,setDescQuickAdd]=useState("");
+  const descWrapRef=useRef(null);
 
   const lastWrittenRef=useRef(null);
   const persistTimerRef=useRef(null);
@@ -1567,38 +1568,38 @@ function App(){
 
           {/* 새 항목 입력 */}
           <div style={S.entryForm}>
-            <input style={S.ef} type="date" value={newEnt.date} onChange={(e)=>setNewEnt({...newEnt,date:e.target.value})}/>
-            <select style={S.ef} value={newEnt.type} onChange={(e)=>setNewEnt({...newEnt,type:e.target.value})}>
+            <input style={{...S.ef,flexShrink:0}} type="date" value={newEnt.date} onChange={(e)=>setNewEnt({...newEnt,date:e.target.value})}/>
+            <select style={{...S.ef,flexShrink:0}} value={newEnt.type} onChange={(e)=>setNewEnt({...newEnt,type:e.target.value})}>
               <option value="income">수입</option>
               <option value="expense">지출</option>
               <option value="transfer">계좌이체</option>
             </select>
             {newEnt.type==="expense"&&(
-              <select style={S.ef} value={newEnt.payMethod} onChange={(e)=>setNewEnt({...newEnt,payMethod:e.target.value})}>
+              <select style={{...S.ef,flexShrink:0}} value={newEnt.payMethod} onChange={(e)=>setNewEnt({...newEnt,payMethod:e.target.value})}>
                 <option value="현금">현금</option>
                 {cardNames.map((m)=><option key={m} value={m}>{m}</option>)}
               </select>
             )}
             {newEnt.type==="transfer"?(
               <>
-                <select style={S.ef} value={newEnt.account} onChange={(e)=>setNewEnt({...newEnt,account:e.target.value})}>
+                <select style={{...S.ef,flexShrink:0}} value={newEnt.account} onChange={(e)=>setNewEnt({...newEnt,account:e.target.value})}>
                   <option value="국민">국민에서</option>
                   <option value="농협">농협에서</option>
                 </select>
                 <span style={{fontSize:12,color:"#9aa3b5"}}>→</span>
-                <select style={S.ef} value={newEnt.toAccount} onChange={(e)=>setNewEnt({...newEnt,toAccount:e.target.value})}>
+                <select style={{...S.ef,flexShrink:0}} value={newEnt.toAccount} onChange={(e)=>setNewEnt({...newEnt,toAccount:e.target.value})}>
                   <option value="농협">농협으로</option>
                   <option value="국민">국민으로</option>
                 </select>
               </>
             ):((newEnt.type==="income"||newEnt.payMethod==="현금")&&(
-              <select style={S.ef} value={newEnt.account} onChange={(e)=>setNewEnt({...newEnt,account:e.target.value})}>
+              <select style={{...S.ef,flexShrink:0}} value={newEnt.account} onChange={(e)=>setNewEnt({...newEnt,account:e.target.value})}>
                 <option value="국민">국민</option>
                 <option value="농협">농협</option>
               </select>
             ))}
             {newEnt.type==="expense"&&(
-              <div style={{position:"relative"}}>
+              <div style={{position:"relative",flexShrink:0}}>
                 <button type="button" style={{...S.ef,width:150,textAlign:"left",background:"#fff",cursor:"pointer",color:newEnt.category?"inherit":"#9aa3b5"}} onClick={()=>setCatDropdownOpen((v)=>!v)}>
                   {newEnt.category||"카테고리(선택,직접입력)"}
                 </button>
@@ -1622,9 +1623,10 @@ function App(){
                 )}
               </div>
             )}
-            <div style={{position:"relative",flex:1,minWidth:90,display:"flex"}}>
-              <input style={{...S.ef,flex:1}} type="text" placeholder="적요 (한/영키로 한글전환)" lang="ko" value={newEnt.desc} onChange={(e)=>setNewEnt({...newEnt,desc:e.target.value})}/>
-              <button type="button" style={{...S.ef,width:26,padding:0,marginLeft:2,cursor:"pointer",color:"#5a6478"}} onClick={()=>setDescDropdownOpen((v)=>!v)}>▾</button>
+            <div ref={descWrapRef} style={{position:"relative",flex:1,minWidth:90,display:"flex"}}>
+              <input style={{...S.ef,flex:1,minWidth:0}} type="text" placeholder="적요 (한/영키로 한글전환)" lang="ko" value={newEnt.desc} onChange={(e)=>setNewEnt({...newEnt,desc:e.target.value})}
+                onFocus={()=>setDescDropdownOpen(true)}
+                onBlur={(e)=>{if(!descWrapRef.current||!descWrapRef.current.contains(e.relatedTarget)) setDescDropdownOpen(false);}}/>
               {descDropdownOpen&&(
                 <div style={{position:"absolute",top:"100%",left:0,marginTop:4,zIndex:30,background:"#fff",border:"1px solid #c8d0e0",borderRadius:8,padding:8,minWidth:190,boxShadow:"0 4px 14px rgba(0,0,0,.15)"}}>
                   {(store.descPresets||[]).length===0&&<div style={{fontSize:12,color:"#9aa3b5",padding:"4px 2px"}}>적요 항목 없음</div>}
@@ -1641,8 +1643,8 @@ function App(){
                 </div>
               )}
             </div>
-            <input style={{...S.ef,width:100}} type="number" placeholder="금액" value={newEnt.amount} onChange={(e)=>setNewEnt({...newEnt,amount:e.target.value})}/>
-            <button style={S.addBtn} onClick={addEntry}>추가</button>
+            <input style={{...S.ef,width:100,flexShrink:0}} type="number" placeholder="금액" value={newEnt.amount} onChange={(e)=>setNewEnt({...newEnt,amount:e.target.value})}/>
+            <button style={{...S.addBtn,flexShrink:0}} onClick={addEntry}>추가</button>
           </div>
 
           {/* 요약 */}
