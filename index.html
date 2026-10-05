@@ -343,7 +343,7 @@ function makeSwissDed(){return Object.fromEntries(SWISS_DED_ITEMS.map((i)=>[i.ke
 
 const DEFAULT_OIL_CHANGE = {baseKm:0,cycleKm:30000};
 function initial(){
-  return {days:makeDays(),prices:{...DEFAULT_PRICES},deductions:{...DEFAULT_DEDUCTIONS},waedae:{...DEFAULT_WAEDAE},swissRevenue:makeSwissRev(),customSwissRoutes:[],hiddenSwissRoutes:[],routeColors:{},customSwissDedItems:[],hiddenSwissDedKeys:[],swissDedOrder:[],customPriceRoutes:[],promotedRoutes:[],permaDeletedRoutes:[],tabOrder:[],tabLabels:{},charters:SEED_CHARTERS,swissDeductions:{},ledger:[],loans:SEED_LOANS,expenseCategories:[...DEFAULT_EXP_CATEGORIES],catExpenses:[],cardOrder:[],cards:DEFAULT_CARDS.map((c)=>({...c})),oilChange:{...DEFAULT_OIL_CHANGE}};
+  return {days:makeDays(),prices:{...DEFAULT_PRICES},deductions:{...DEFAULT_DEDUCTIONS},waedae:{...DEFAULT_WAEDAE},swissRevenue:makeSwissRev(),customSwissRoutes:[],hiddenSwissRoutes:[],routeColors:{},customSwissDedItems:[],hiddenSwissDedKeys:[],swissDedOrder:[],customPriceRoutes:[],promotedRoutes:[],permaDeletedRoutes:[],tabOrder:[],tabLabels:{},charters:SEED_CHARTERS,swissDeductions:{},ledger:[],loans:SEED_LOANS,expenseCategories:[...DEFAULT_EXP_CATEGORIES],catExpenses:[],cardOrder:[],cards:DEFAULT_CARDS.map((c)=>({...c})),oilChange:{...DEFAULT_OIL_CHANGE},descPresets:[],waedaeLabel:"외대"};
 }
 function normalDay(d){
   if(!d) return {am:[],pm:[],in:"",out:"",fuel:""};
@@ -354,7 +354,7 @@ function normalStore(s){
   const days={};
   Object.entries(s.days||{}).forEach(([k,d])=>{days[k]=normalDay(d);});
   const promotedRoutes=[...new Set((s.promotedRoutes||[]).filter((r)=>!PRICED_ROUTES.includes(r)))];
-  return {days,prices:{...DEFAULT_PRICES,...(s.prices||{})},deductions:{...DEFAULT_DEDUCTIONS,...(s.deductions||{})},waedae:{...DEFAULT_WAEDAE,...(s.waedae||{})},swissRevenue:{...makeSwissRev(),...(s.swissRevenue||{})},customSwissRoutes:s.customSwissRoutes||[],hiddenSwissRoutes:s.hiddenSwissRoutes||[],routeColors:s.routeColors||{},customSwissDedItems:s.customSwissDedItems||[],hiddenSwissDedKeys:s.hiddenSwissDedKeys||[],swissDedOrder:s.swissDedOrder||[],customPriceRoutes:s.customPriceRoutes||[],promotedRoutes,permaDeletedRoutes:s.permaDeletedRoutes||[],tabOrder:s.tabOrder||[],tabLabels:s.tabLabels||{},charters:s.charters||[],swissDeductions:s.swissDeductions||{},ledger:s.ledger||[],loans:s.loans||SEED_LOANS,expenseCategories:s.expenseCategories||[...DEFAULT_EXP_CATEGORIES],catExpenses:s.catExpenses||[],cardOrder:s.cardOrder||[],cards:s.cards||DEFAULT_CARDS.map((c)=>({...c})),oilChange:{...DEFAULT_OIL_CHANGE,...(s.oilChange||{})}};
+  return {days,prices:{...DEFAULT_PRICES,...(s.prices||{})},deductions:{...DEFAULT_DEDUCTIONS,...(s.deductions||{})},waedae:{...DEFAULT_WAEDAE,...(s.waedae||{})},swissRevenue:{...makeSwissRev(),...(s.swissRevenue||{})},customSwissRoutes:s.customSwissRoutes||[],hiddenSwissRoutes:s.hiddenSwissRoutes||[],routeColors:s.routeColors||{},customSwissDedItems:s.customSwissDedItems||[],hiddenSwissDedKeys:s.hiddenSwissDedKeys||[],swissDedOrder:s.swissDedOrder||[],customPriceRoutes:s.customPriceRoutes||[],promotedRoutes,permaDeletedRoutes:s.permaDeletedRoutes||[],tabOrder:s.tabOrder||[],tabLabels:s.tabLabels||{},charters:s.charters||[],swissDeductions:s.swissDeductions||{},ledger:s.ledger||[],loans:s.loans||SEED_LOANS,expenseCategories:s.expenseCategories||[...DEFAULT_EXP_CATEGORIES],catExpenses:s.catExpenses||[],cardOrder:s.cardOrder||[],cards:s.cards||DEFAULT_CARDS.map((c)=>({...c})),oilChange:{...DEFAULT_OIL_CHANGE,...(s.oilChange||{})},descPresets:s.descPresets||[],waedaeLabel:s.waedaeLabel||"외대"};
 }
 
 function App(){
@@ -432,6 +432,8 @@ function App(){
   const [catDropdownOpen,setCatDropdownOpen]=useState(false);
   const [catQuickAdd,setCatQuickAdd]=useState("");
   const [newCatName,setNewCatName]=useState("");
+  const [descDropdownOpen,setDescDropdownOpen]=useState(false);
+  const [descQuickAdd,setDescQuickAdd]=useState("");
 
   const lastWrittenRef=useRef(null);
   const persistTimerRef=useRef(null);
@@ -581,6 +583,20 @@ function App(){
   };
   const closeDay=()=>{setSel(null);setDAm([]);setDPm([]);setDFuel("");setMemoInput("");};
   const colorFor=(r)=>ROUTE_COLORS[r]||EXTRA_ROUTE_COLORS[r]||(store?.routeColors||{})[r]||EXTRA_COLOR;
+  // "외대"는 내부 키는 고정이지만 화면에 보이는 이름은 사용자가 자유롭게 바꿀 수 있음(과거 달력 데이터는 그대로 "외대"로 저장됨)
+  const waedaeLabel=store?.waedaeLabel||"외대";
+  const dispRoute=(r)=>r==="외대"?waedaeLabel:r;
+  // 외대 이름 변경 입력란: 타이핑 중엔 로컬 draft만 바꾸고, 포커스를 벗어날 때 한 번만 저장함.
+  // (글자 하나 지울 때마다 바로 upd()로 저장해버리면, 빈 문자열이 되는 순간 위 waedaeLabel이
+  //  "외대"로 되돌아가 버려 지우기가 안 되는 것처럼 보이고, 과도하게 잦은 저장을 유발함)
+  const [waedaeLabelDraft,setWaedaeLabelDraft]=useState(null);
+  const waedaeLabelInputValue=waedaeLabelDraft!==null?waedaeLabelDraft:(store?.waedaeLabel??"외대");
+  const commitWaedaeLabel=()=>{
+    if(waedaeLabelDraft===null) return;
+    const v=waedaeLabelDraft.trim()?waedaeLabelDraft:"외대";
+    upd((p)=>({...p,waedaeLabel:v}));
+    setWaedaeLabelDraft(null);
+  };
   // 달력에서 고를 수 있는 노선 = 노선단가 탭에 실제로 살아있는(숨김 안 된) 노선 + 외대 + 편입된 노선 + 직접추가한 노선
   const pickableRoutes=useMemo(()=>{
     const hidden=store?.hiddenSwissRoutes||[];
@@ -848,7 +864,9 @@ function App(){
   // 이월 잔액 자동 계산 (통장별: 국민/농협). 해당 달·통장에 사용자가 직접 입력한 이월 항목이 있으면
   // 그 값을 그대로 쓰고(수동 우선), 없으면 전달의 "이월+수입-지출" 결과를 자동으로 이어받습니다.
   // account 필드가 없는 예전 기록은 전부 "국민"으로 취급합니다 (농협 구분은 이번에 새로 생긴 것이므로).
-  // 데이터가 전혀 없는 달을 만나거나 36개월(3년) 넘게 거슬러 올라가면 더 계산하지 않고 0으로 멈춥니다.
+  // 36개월(3년) 넘게 거슬러 올라가면 더 계산하지 않고 0으로 멈춥니다(무한 소급 방지). 특정 달에 그
+  // 통장 거래가 하나도 없다고 해서 바로 0으로 멈추지는 않습니다 - 그 전달들의 실제 잔액을 놓치게 되므로
+  // (예: 농협 통장은 이체가 있던 달에만 거래가 생기고, 그 외의 달엔 거래가 하나도 없을 수 있습니다).
   function computeMonthFinance(y,m,account,depth=0){
     const mstr=mk(y,m);
     const monthLedger=(store?.ledger||[]).filter((e)=>e.date?.startsWith(mstr)&&(e.account||"국민")===account);
@@ -861,7 +879,7 @@ function App(){
     let carry;
     if(explicitCarry){
       carry=Number(explicitCarry.amount)||0;
-    }else if((monthLedger.length===0&&charterIncome===0)||depth>=36){
+    }else if(depth>=36){
       carry=0;
     }else{
       const py=m===1?y-1:y,pm=m===1?12:m-1;
@@ -968,6 +986,17 @@ function App(){
     setCatQuickAdd("");
     setCatDropdownOpen(false);
   };
+  const delDescPreset=(name)=>upd((p)=>({...p,descPresets:(p.descPresets||[]).filter((x)=>x!==name)}));
+  const addQuickDesc=()=>{
+    const v=descQuickAdd.trim();
+    if(!v) return;
+    if(!(store.descPresets||[]).includes(v)){
+      upd((p)=>({...p,descPresets:[...(p.descPresets||[]),v]}));
+    }
+    setNewEnt((prev)=>({...prev,desc:v}));
+    setDescQuickAdd("");
+    setDescDropdownOpen(false);
+  };
   const catColor=(name)=>{
     const list=store?.expenseCategories||DEFAULT_EXP_CATEGORIES;
     const idx=list.indexOf(name);
@@ -1067,12 +1096,12 @@ function App(){
                 {(displayDd.in||displayDd.out)&&<div style={S.clkRow}><span style={{color:"#6fae8a"}}>{displayDd.in||"-"}</span><span style={{color:"#4a5266"}}>/</span><span style={{color:"#d99a6f"}}>{displayDd.out||"-"}</span></div>}
                 <div style={S.splitWrap}>
                   <div style={S.splitCol}>
-                    {displayDd.am.slice(0,3).map((r,idx)=><span key={idx} style={{...S.mTag,background:colorFor(r)+"22",color:colorFor(r),borderColor:colorFor(r)}}>{r}</span>)}
+                    {displayDd.am.slice(0,3).map((r,idx)=><span key={idx} style={{...S.mTag,background:colorFor(r)+"22",color:colorFor(r),borderColor:colorFor(r)}}>{dispRoute(r)}</span>)}
                     {displayDd.am.length>3&&<span style={{fontSize:8.5,color:"#7a8295"}}>+{displayDd.am.length-3}</span>}
                   </div>
                   <div style={S.splitDiv}/>
                   <div style={S.splitCol}>
-                    {displayDd.pm.slice(0,3).map((r,idx)=><span key={idx} style={{...S.mTag,background:colorFor(r)+"22",color:colorFor(r),borderColor:colorFor(r)}}>{r}</span>)}
+                    {displayDd.pm.slice(0,3).map((r,idx)=><span key={idx} style={{...S.mTag,background:colorFor(r)+"22",color:colorFor(r),borderColor:colorFor(r)}}>{dispRoute(r)}</span>)}
                     {displayDd.pm.length>3&&<span style={{fontSize:8.5,color:"#7a8295"}}>+{displayDd.pm.length-3}</span>}
                     {charterMemos.map((m,idx)=><div key={"memo"+idx} style={{fontSize:8.5,color:"#1a2535",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"100%"}}>{m}</div>)}
                   </div>
@@ -1186,7 +1215,7 @@ function App(){
           )}
           {/* 외대 (오전/오후 단가 별도 - 노선단가 탭에서 단가 수정) */}
           <div style={{marginTop:8,padding:"8px 0",borderTop:"1px solid #d0d8e8"}}>
-            <div style={{fontSize:12.5,fontWeight:700,color:"#1a2535",marginBottom:6}}>외대 <span style={{fontSize:11,color:"#7a8295",fontWeight:400}}>(단가는 노선단가 탭에서 수정)</span></div>
+            <div style={{fontSize:12.5,fontWeight:700,color:"#1a2535",marginBottom:6}}>{waedaeLabel} <span style={{fontSize:11,color:"#7a8295",fontWeight:400}}>(단가는 노선단가 탭에서 수정)</span></div>
             <table className="T">
               <thead><tr><th></th><th style={{width:70,textAlign:"center"}}>횟수</th><th style={{width:110}}>단가</th><th style={{width:110,textAlign:"right"}}>합계</th></tr></thead>
               <tbody>
@@ -1204,7 +1233,7 @@ function App(){
                 })}
               </tbody>
             </table>
-            <div style={{textAlign:"right",fontSize:12.5,color:"#1a2535",fontWeight:700,padding:"6px 4px",borderTop:"1px solid #d0d8e8"}}>외대 소계 : {fmt(waedaeTotal)}원</div>
+            <div style={{textAlign:"right",fontSize:12.5,color:"#1a2535",fontWeight:700,padding:"6px 4px",borderTop:"1px solid #d0d8e8"}}>{waedaeLabel} 소계 : {fmt(waedaeTotal)}원</div>
           </div>
           <>
             <div style={S.totalBar}>스위스 매출 합계 (이번 달) : <b style={{color:"#6fae8a",fontSize:16,marginLeft:8}}>{fmt(swissMonthTotal)}원</b></div>
@@ -1593,7 +1622,25 @@ function App(){
                 )}
               </div>
             )}
-            <input style={{...S.ef,flex:1,minWidth:90}} type="text" placeholder="적요 (한/영키로 한글전환)" lang="ko" value={newEnt.desc} onChange={(e)=>setNewEnt({...newEnt,desc:e.target.value})}/>
+            <div style={{position:"relative",flex:1,minWidth:90,display:"flex"}}>
+              <input style={{...S.ef,flex:1}} type="text" placeholder="적요 (한/영키로 한글전환)" lang="ko" value={newEnt.desc} onChange={(e)=>setNewEnt({...newEnt,desc:e.target.value})}/>
+              <button type="button" style={{...S.ef,width:26,padding:0,marginLeft:2,cursor:"pointer",color:"#5a6478"}} onClick={()=>setDescDropdownOpen((v)=>!v)}>▾</button>
+              {descDropdownOpen&&(
+                <div style={{position:"absolute",top:"100%",left:0,marginTop:4,zIndex:30,background:"#fff",border:"1px solid #c8d0e0",borderRadius:8,padding:8,minWidth:190,boxShadow:"0 4px 14px rgba(0,0,0,.15)"}}>
+                  {(store.descPresets||[]).length===0&&<div style={{fontSize:12,color:"#9aa3b5",padding:"4px 2px"}}>적요 항목 없음</div>}
+                  {(store.descPresets||[]).map((d)=>(
+                    <div key={d} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 4px",borderRadius:5}}>
+                      <span onClick={()=>{setNewEnt({...newEnt,desc:d});setDescDropdownOpen(false);}} style={{flex:1,fontSize:12.5,cursor:"pointer",fontWeight:newEnt.desc===d?700:400}}>{d}</span>
+                      <button type="button" onClick={(e)=>{e.stopPropagation();delDescPreset(d);}} style={{...S.rBtn,fontSize:10,marginLeft:6}}>✕</button>
+                    </div>
+                  ))}
+                  <div style={{display:"flex",gap:4,marginTop:6,borderTop:"1px solid #eee",paddingTop:6}}>
+                    <input style={{...S.ti,flex:1,fontSize:12}} type="text" lang="ko" placeholder="새 적요" value={descQuickAdd} onChange={(e)=>setDescQuickAdd(e.target.value)} onKeyDown={(e)=>{if(e.key==="Enter"&&!e.nativeEvent.isComposing) addQuickDesc();}}/>
+                    <button type="button" style={S.addBtn} onClick={addQuickDesc}>추가</button>
+                  </div>
+                </div>
+              )}
+            </div>
             <input style={{...S.ef,width:100}} type="number" placeholder="금액" value={newEnt.amount} onChange={(e)=>setNewEnt({...newEnt,amount:e.target.value})}/>
             <button style={S.addBtn} onClick={addEntry}>추가</button>
           </div>
@@ -1660,7 +1707,7 @@ function App(){
             :<div style={{display:"flex",flexDirection:"column",gap:10}}>
               {stats.counts.map(([r,cnt])=>(
                 <div key={r} style={{display:"flex",alignItems:"center",gap:10}}>
-                  <div style={{width:90,fontSize:12.5,color:"#1a2535",fontWeight:700,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}} title={r}>{r}</div>
+                  <div style={{width:90,fontSize:12.5,color:"#1a2535",fontWeight:700,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}} title={dispRoute(r)}>{dispRoute(r)}</div>
                   <div style={{flex:1,height:12,background:"#1f2430",borderRadius:6,overflow:"hidden"}}>
                     <div style={{width:`${(cnt/(stats.counts[0][1]||1))*100}%`,height:"100%",background:ROUTE_COLORS[r]||"#5a6478",transition:"width .4s"}}/>
                   </div>
@@ -1675,7 +1722,7 @@ function App(){
       {/* 노선 단가 */}
       {tab==="prices"&&(
         <div style={S.panel}>
-          <div style={S.hint}>노선별 단가(이미 공제 반영된 실수령 기준)를 관리하는 곳입니다. (외부·외대·공휴일은 별도 관리) 오른쪽 ✕로 삭제할 수 있습니다. 편입된 노선명을 클릭하면 아래 추가노선 목록으로 되돌릴 수 있습니다.</div>
+          <div style={S.hint}>노선별 단가(이미 공제 반영된 실수령 기준)를 관리하는 곳입니다. (외부·{waedaeLabel}·공휴일은 별도 관리) 오른쪽 ✕로 삭제할 수 있습니다. 편입된 노선명을 클릭하면 아래 추가노선 목록으로 되돌릴 수 있습니다.</div>
           <table className="T rt">
             <thead><tr><th>노선</th><th className="cPrice" style={{width:130}}>단가 (원)</th><th className="cX" style={{width:24}}></th></tr></thead>
             <tbody>
@@ -1742,8 +1789,15 @@ function App(){
             <button style={S.addRowBtn} onClick={()=>upd((p)=>({...p,customPriceRoutes:[...(p.customPriceRoutes||[]),{id:uid(),name:"",price:0,deduction:0}]}))}>+ 노선 추가</button>
           </div>
           <div style={{...S.settleBox,marginTop:14}}>
-            <div style={S.settleTitle}>외대 (오전 / 오후 단가 별도)</div>
-            <div style={{fontSize:11,color:"#6b7585",marginBottom:8}}>달력에서 "외대"를 선택한 횟수만큼 자동으로 계산되어 스위스매출에 반영됩니다.</div>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+              <input type="text" lang="ko" value={waedaeLabelInputValue}
+                onChange={(e)=>setWaedaeLabelDraft(e.target.value)}
+                onBlur={commitWaedaeLabel}
+                onKeyDown={(e)=>{if(e.key==="Enter"&&!e.nativeEvent.isComposing) e.target.blur();}}
+                style={{...S.settleTitle,margin:0,border:"1px solid #c8d0e0",borderRadius:6,padding:"4px 8px",background:"#fff",width:140}}/>
+              <span style={{fontSize:11,color:"#7a8295"}}>(오전 / 오후 단가 별도, 클릭해서 이름 변경 가능)</span>
+            </div>
+            <div style={{fontSize:11,color:"#6b7585",marginBottom:8}}>달력에서 "{waedaeLabel}"를 선택한 횟수만큼 자동으로 계산되어 스위스매출에 반영됩니다.</div>
             <table className="T">
               <thead><tr><th></th><th style={{width:110}}>단가</th><th style={{width:60,textAlign:"center"}}>횟수</th><th style={{width:100,textAlign:"right"}}>합계</th></tr></thead>
               <tbody>
@@ -1851,7 +1905,7 @@ function App(){
                     {pickableRoutes.map((r)=>{
                       const on=draft.includes(r);
                       const c=colorFor(r);
-                      return <button key={r} className="ptag" style={{border:"1px solid",borderRadius:5,padding:"3px 7px",fontSize:11,cursor:"pointer",background:on?c:"#fff",borderColor:c,color:on?"#fff":c}} onClick={()=>toggleR(period,r)}>{r}</button>;
+                      return <button key={r} className="ptag" style={{border:"1px solid",borderRadius:5,padding:"3px 7px",fontSize:11,cursor:"pointer",background:on?c:"#fff",borderColor:c,color:on?"#fff":c}} onClick={()=>toggleR(period,r)}>{dispRoute(r)}</button>;
                     })}
                   </div>
                 </details>
@@ -1864,7 +1918,7 @@ function App(){
                   {draft.map((item,idx)=>(
                     <div key={idx} style={{display:"flex",alignItems:"center",gap:7,background:"#171b24",border:"1px solid #262c39",borderRadius:7,padding:"4px 9px"}}>
                       <span style={{width:7,height:7,borderRadius:"50%",flexShrink:0,background:colorFor(item)}}/>
-                      <span style={{fontSize:12.5,flex:1,color:"#fff"}}>{item}</span>
+                      <span style={{fontSize:12.5,flex:1,color:"#fff"}}>{dispRoute(item)}</span>
                       <button style={S.rBtn} onClick={()=>setDraft((p)=>p.filter((_,i)=>i!==idx))}>✕</button>
                     </div>
                   ))}
