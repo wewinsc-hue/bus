@@ -333,6 +333,80 @@ const SEED_DAYS={};
 const SEED_CHARTERS=[];
 const SEED_LOANS=[];
 
+// 매월 반복되는 산악회/단체 외부매출 고정일정 (2026-11 ~ 2027-12, 1회만 자동 추가됨)
+const RECURRING_CHARTER_SEED_2026=[
+  {date:"2026-11-01",desc:"산그림 산악회"},
+  {date:"2026-11-15",desc:"서수원여행"},
+  {date:"2026-11-21",desc:"으뜸 산악회"},
+  {date:"2026-11-22",desc:"럭셔리 산악회"},
+  {date:"2026-11-28",desc:"원칠사모 산악회"},
+  {date:"2026-12-06",desc:"산그림 산악회"},
+  {date:"2026-12-19",desc:"으뜸 산악회"},
+  {date:"2026-12-20",desc:"서수원여행"},
+  {date:"2026-12-26",desc:"원칠사모 산악회"},
+  {date:"2026-12-27",desc:"럭셔리 산악회"},
+  {date:"2027-01-03",desc:"산그림 산악회"},
+  {date:"2027-01-16",desc:"으뜸 산악회"},
+  {date:"2027-01-17",desc:"서수원여행"},
+  {date:"2027-01-23",desc:"원칠사모 산악회"},
+  {date:"2027-01-24",desc:"럭셔리 산악회"},
+  {date:"2027-02-07",desc:"산그림 산악회"},
+  {date:"2027-02-20",desc:"으뜸 산악회"},
+  {date:"2027-02-21",desc:"서수원여행"},
+  {date:"2027-02-27",desc:"원칠사모 산악회"},
+  {date:"2027-02-28",desc:"럭셔리 산악회"},
+  {date:"2027-03-07",desc:"산그림 산악회"},
+  {date:"2027-03-20",desc:"으뜸 산악회"},
+  {date:"2027-03-21",desc:"서수원여행"},
+  {date:"2027-03-27",desc:"원칠사모 산악회"},
+  {date:"2027-03-28",desc:"럭셔리 산악회"},
+  {date:"2027-04-04",desc:"산그림 산악회"},
+  {date:"2027-04-17",desc:"으뜸 산악회"},
+  {date:"2027-04-18",desc:"서수원여행"},
+  {date:"2027-04-24",desc:"원칠사모 산악회"},
+  {date:"2027-04-25",desc:"럭셔리 산악회"},
+  {date:"2027-05-02",desc:"산그림 산악회"},
+  {date:"2027-05-15",desc:"으뜸 산악회"},
+  {date:"2027-05-16",desc:"서수원여행"},
+  {date:"2027-05-22",desc:"원칠사모 산악회"},
+  {date:"2027-05-23",desc:"럭셔리 산악회"},
+  {date:"2027-06-06",desc:"산그림 산악회"},
+  {date:"2027-06-19",desc:"으뜸 산악회"},
+  {date:"2027-06-20",desc:"서수원여행"},
+  {date:"2027-06-26",desc:"원칠사모 산악회"},
+  {date:"2027-06-27",desc:"럭셔리 산악회"},
+  {date:"2027-07-04",desc:"산그림 산악회"},
+  {date:"2027-07-17",desc:"으뜸 산악회"},
+  {date:"2027-07-18",desc:"서수원여행"},
+  {date:"2027-07-24",desc:"원칠사모 산악회"},
+  {date:"2027-07-25",desc:"럭셔리 산악회"},
+  {date:"2027-08-01",desc:"산그림 산악회"},
+  {date:"2027-08-15",desc:"서수원여행"},
+  {date:"2027-08-21",desc:"으뜸 산악회"},
+  {date:"2027-08-22",desc:"럭셔리 산악회"},
+  {date:"2027-08-28",desc:"원칠사모 산악회"},
+  {date:"2027-09-05",desc:"산그림 산악회"},
+  {date:"2027-09-18",desc:"으뜸 산악회"},
+  {date:"2027-09-19",desc:"서수원여행"},
+  {date:"2027-09-25",desc:"원칠사모 산악회"},
+  {date:"2027-09-26",desc:"럭셔리 산악회"},
+  {date:"2027-10-03",desc:"산그림 산악회"},
+  {date:"2027-10-16",desc:"으뜸 산악회"},
+  {date:"2027-10-17",desc:"서수원여행"},
+  {date:"2027-10-23",desc:"원칠사모 산악회"},
+  {date:"2027-10-24",desc:"럭셔리 산악회"},
+  {date:"2027-11-07",desc:"산그림 산악회"},
+  {date:"2027-11-20",desc:"으뜸 산악회"},
+  {date:"2027-11-21",desc:"서수원여행"},
+  {date:"2027-11-27",desc:"원칠사모 산악회"},
+  {date:"2027-11-28",desc:"럭셔리 산악회"},
+  {date:"2027-12-05",desc:"산그림 산악회"},
+  {date:"2027-12-18",desc:"으뜸 산악회"},
+  {date:"2027-12-19",desc:"서수원여행"},
+  {date:"2027-12-25",desc:"원칠사모 산악회"},
+  {date:"2027-12-26",desc:"럭셔리 산악회"},
+];
+
 function makeDays(){
   const d={};
   Object.entries(SEED_DAYS).forEach(([k,v])=>{d[k]={am:v.am||[],pm:v.pm||[],in:"",out:"",fuel:""};});
@@ -343,18 +417,32 @@ function makeSwissDed(){return Object.fromEntries(SWISS_DED_ITEMS.map((i)=>[i.ke
 
 const DEFAULT_OIL_CHANGE = {baseKm:0,cycleKm:30000};
 function initial(){
-  return {days:makeDays(),prices:{...DEFAULT_PRICES},deductions:{...DEFAULT_DEDUCTIONS},waedae:{...DEFAULT_WAEDAE},swissRevenue:makeSwissRev(),customSwissRoutes:[],hiddenSwissRoutes:[],routeColors:{},customSwissDedItems:[],hiddenSwissDedKeys:[],swissDedOrder:[],customPriceRoutes:[],promotedRoutes:[],permaDeletedRoutes:[],tabOrder:[],tabLabels:{},charters:SEED_CHARTERS,swissDeductions:{},ledger:[],loans:SEED_LOANS,expenseCategories:[...DEFAULT_EXP_CATEGORIES],catExpenses:[],cardOrder:[],cards:DEFAULT_CARDS.map((c)=>({...c})),oilChange:{...DEFAULT_OIL_CHANGE},descPresets:[],waedaeLabel:"외대"};
+  return {days:makeDays(),prices:{...DEFAULT_PRICES},deductions:{...DEFAULT_DEDUCTIONS},waedae:{...DEFAULT_WAEDAE},swissRevenue:makeSwissRev(),customSwissRoutes:[],hiddenSwissRoutes:[],routeColors:{},customSwissDedItems:[],hiddenSwissDedKeys:[],swissDedOrder:[],customPriceRoutes:[],promotedRoutes:[],permaDeletedRoutes:[],tabOrder:[],tabLabels:{},charters:SEED_CHARTERS,swissDeductions:{},ledger:[],loans:SEED_LOANS,expenseCategories:[...DEFAULT_EXP_CATEGORIES],catExpenses:[],cardOrder:[],cards:DEFAULT_CARDS.map((c)=>({...c})),oilChange:{...DEFAULT_OIL_CHANGE},descPresets:[],waedaeLabel:"외대",_seedRecurring2026:false};
 }
 function normalDay(d){
   if(!d) return {am:[],pm:[],in:"",out:"",fuel:""};
   if(Array.isArray(d.routes)) return {am:aliasRouteList(d.routes),pm:[],in:d.in||"",out:d.out||"",fuel:d.fuel||""};
   return {am:aliasRouteList(d.am),pm:aliasRouteList(d.pm),in:d.in||"",out:d.out||"",fuel:d.fuel||""};
 }
+// 주의: id를 uid()로 무작위 생성하면 로컬/기준점(baseline)/서버 각각에서 이 함수가
+// 따로 호출될 때마다 "같은" 반복일정이 서로 다른 id로 추가되어, 기기 간 3-way 병합(mergeIdArray)이
+// 이를 별개 항목으로 인식해 중복이 쌓이게 됩니다. 그래서 날짜/내용으로부터 항상 같은 id가
+// 나오도록 인덱스 기반 고정 id(rc2026-00 등)를 사용해 어디서 호출되어도 같은 항목이 같은 id를 갖게 합니다.
+function seedRecurringCharters(list){
+  const already=list||[];
+  const existingKeys=new Set(already.map((c)=>c.date+"|"+c.desc));
+  const toAdd=RECURRING_CHARTER_SEED_2026
+    .map((r,i)=>({id:"rc2026-"+String(i).padStart(2,"0"),date:r.date,desc:r.desc,amount:800000,paid:false,memo:""}))
+    .filter((r)=>!existingKeys.has(r.date+"|"+r.desc));
+  return [...already,...toAdd];
+}
 function normalStore(s){
   const days={};
   Object.entries(s.days||{}).forEach(([k,d])=>{days[k]=normalDay(d);});
   const promotedRoutes=[...new Set((s.promotedRoutes||[]).filter((r)=>!PRICED_ROUTES.includes(r)))];
-  return {days,prices:{...DEFAULT_PRICES,...(s.prices||{})},deductions:{...DEFAULT_DEDUCTIONS,...(s.deductions||{})},waedae:{...DEFAULT_WAEDAE,...(s.waedae||{})},swissRevenue:{...makeSwissRev(),...(s.swissRevenue||{})},customSwissRoutes:s.customSwissRoutes||[],hiddenSwissRoutes:s.hiddenSwissRoutes||[],routeColors:s.routeColors||{},customSwissDedItems:s.customSwissDedItems||[],hiddenSwissDedKeys:s.hiddenSwissDedKeys||[],swissDedOrder:s.swissDedOrder||[],customPriceRoutes:s.customPriceRoutes||[],promotedRoutes,permaDeletedRoutes:s.permaDeletedRoutes||[],tabOrder:s.tabOrder||[],tabLabels:s.tabLabels||{},charters:s.charters||[],swissDeductions:s.swissDeductions||{},ledger:s.ledger||[],loans:s.loans||SEED_LOANS,expenseCategories:s.expenseCategories||[...DEFAULT_EXP_CATEGORIES],catExpenses:s.catExpenses||[],cardOrder:s.cardOrder||[],cards:s.cards||DEFAULT_CARDS.map((c)=>({...c})),oilChange:{...DEFAULT_OIL_CHANGE,...(s.oilChange||{})},descPresets:s.descPresets||[],waedaeLabel:s.waedaeLabel||"외대"};
+  const seedDone=!!s._seedRecurring2026;
+  const charters=seedDone?(s.charters||[]):seedRecurringCharters(s.charters||[]);
+  return {days,prices:{...DEFAULT_PRICES,...(s.prices||{})},deductions:{...DEFAULT_DEDUCTIONS,...(s.deductions||{})},waedae:{...DEFAULT_WAEDAE,...(s.waedae||{})},swissRevenue:{...makeSwissRev(),...(s.swissRevenue||{})},customSwissRoutes:s.customSwissRoutes||[],hiddenSwissRoutes:s.hiddenSwissRoutes||[],routeColors:s.routeColors||{},customSwissDedItems:s.customSwissDedItems||[],hiddenSwissDedKeys:s.hiddenSwissDedKeys||[],swissDedOrder:s.swissDedOrder||[],customPriceRoutes:s.customPriceRoutes||[],promotedRoutes,permaDeletedRoutes:s.permaDeletedRoutes||[],tabOrder:s.tabOrder||[],tabLabels:s.tabLabels||{},charters,swissDeductions:s.swissDeductions||{},ledger:s.ledger||[],loans:s.loans||SEED_LOANS,expenseCategories:s.expenseCategories||[...DEFAULT_EXP_CATEGORIES],catExpenses:s.catExpenses||[],cardOrder:s.cardOrder||[],cards:s.cards||DEFAULT_CARDS.map((c)=>({...c})),oilChange:{...DEFAULT_OIL_CHANGE,...(s.oilChange||{})},descPresets:s.descPresets||[],waedaeLabel:s.waedaeLabel||"외대",_seedRecurring2026:true};
 }
 
 function App(){
@@ -1035,7 +1123,7 @@ function App(){
 
   return (
     <div style={S.app}>
-      <style>{`*{box-sizing:border-box;}.bc:hover{background:#eef1f8!important;cursor:pointer;}.ptag{transition:transform .08s,background .15s;}.ptag:active{transform:scale(.96);}::-webkit-scrollbar{width:7px;height:7px;}::-webkit-scrollbar-thumb{background:#b0bad0;border-radius:4px;}table.T{width:100%;border-collapse:collapse;}table.T th,table.T td{padding:7px 6px;font-size:12.5px;border-bottom:1px solid #d0d8e8;vertical-align:middle;}table.T th{color:#1a2535;font-weight:700;text-align:left;}table.T input[type=number],table.T input[type=text],table.T input[type=date]{background:#eef1f8;border:1px solid #b8c4d8;border-radius:6px;color:#0d1520;font-weight:500;padding:5px 7px;font-size:12.5px;width:100%;outline:none;}input.dateOverlay::-webkit-calendar-picker-indicator{position:absolute;left:0;top:0;width:100%;height:100%;margin:0;padding:0;opacity:0;cursor:pointer;}.ra{background:rgba(59,110,143,.06);}.rc{background:rgba(47,143,111,.06);}@media(max-width:600px){.cal-outer{overflow-x:auto;-webkit-overflow-scrolling:touch;padding:0 8px 8px 0;}.cal-wkrow{display:grid!important;grid-template-columns:repeat(7,90px)!important;width:630px!important;min-width:630px!important;margin-bottom:4px;gap:3px!important;}.cal-grid{display:grid!important;grid-template-columns:repeat(7,90px)!important;width:630px;gap:3px!important;}.cal-cell{min-height:90px!important;width:90px!important;padding:5px 4px!important;border-radius:7px!important;box-sizing:border-box!important;}.cal-dnum{font-size:12px!important;font-weight:700!important;}.cal-tag{font-size:10px!important;padding:2px 4px!important;border-radius:4px!important;font-weight:700!important;white-space:nowrap!important;overflow:visible!important;text-overflow:clip!important;}}table.T.rt{table-layout:fixed;}table.T.rt th:first-child,table.T.rt td:first-child{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}@media(max-width:600px){table.T.rt th.cCnt{width:34px!important;padding-left:2px!important;padding-right:2px!important;}table.T.rt th.cPrice{width:72px!important;}table.T.rt th.cPrice2{width:72px!important;}table.T.rt th.cTotal{width:58px!important;}table.T.rt th.cX{width:20px!important;}table.T.rt td:first-child{font-size:12px!important;}}`}</style>
+      <style>{`*{box-sizing:border-box;}.bc:hover{background:#eef1f8!important;cursor:pointer;}.ptag{transition:transform .08s,background .15s;}.ptag:active{transform:scale(.96);}::-webkit-scrollbar{width:7px;height:7px;}::-webkit-scrollbar-thumb{background:#b0bad0;border-radius:4px;}table.T{width:100%;border-collapse:collapse;}table.T th,table.T td{padding:7px 6px;font-size:12.5px;border-bottom:1px solid #d0d8e8;vertical-align:middle;}table.T th{color:#1a2535;font-weight:700;text-align:left;}table.T input[type=number],table.T input[type=text],table.T input[type=date]{background:#eef1f8;border:1px solid #b8c4d8;border-radius:6px;color:#0d1520;font-weight:500;padding:5px 7px;font-size:12.5px;width:100%;outline:none;}input.dateOverlay::-webkit-calendar-picker-indicator{position:absolute;left:0;top:0;width:100%;height:100%;margin:0;padding:0;opacity:0;cursor:pointer;}.ra{background:rgba(59,110,143,.06);}.rc{background:rgba(47,143,111,.06);}input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}input[type=number]{-moz-appearance:textfield;}@media(max-width:600px){.cal-outer{overflow-x:auto;-webkit-overflow-scrolling:touch;padding:0 8px 8px 0;}.cal-wkrow{display:grid!important;grid-template-columns:repeat(7,90px)!important;width:630px!important;min-width:630px!important;margin-bottom:4px;gap:3px!important;}.cal-grid{display:grid!important;grid-template-columns:repeat(7,90px)!important;width:630px;gap:3px!important;}.cal-cell{min-height:90px!important;width:90px!important;padding:5px 4px!important;border-radius:7px!important;box-sizing:border-box!important;}.cal-dnum{font-size:12px!important;font-weight:700!important;}.cal-tag{font-size:10px!important;padding:2px 4px!important;border-radius:4px!important;font-weight:700!important;white-space:nowrap!important;overflow:visible!important;text-overflow:clip!important;}}table.T.rt{table-layout:fixed;}table.T.rt th:first-child,table.T.rt td:first-child{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}@media(max-width:600px){table.T.rt th.cCnt{width:34px!important;padding-left:2px!important;padding-right:2px!important;}table.T.rt th.cPrice{width:72px!important;}table.T.rt th.cPrice2{width:72px!important;}table.T.rt th.cTotal{width:58px!important;}table.T.rt th.cX{width:20px!important;}table.T.rt td:first-child{font-size:12px!important;}}`}</style>
 
       <div style={S.header}>
         <div><div style={S.title}>버스 운행 일정표</div></div>
@@ -1600,7 +1688,7 @@ function App(){
             ))}
             {newEnt.type==="expense"&&(
               <div style={{position:"relative",flexShrink:0}}>
-                <button type="button" style={{...S.ef,width:150,textAlign:"left",background:"#fff",cursor:"pointer",color:newEnt.category?"inherit":"#9aa3b5"}} onClick={()=>setCatDropdownOpen((v)=>!v)}>
+                <button type="button" style={{...S.ef,width:150,textAlign:"left",cursor:"pointer",color:newEnt.category?"inherit":"#9aa3b5"}} onClick={()=>setCatDropdownOpen((v)=>!v)}>
                   {newEnt.category||"카테고리(선택,직접입력)"}
                 </button>
                 {catDropdownOpen&&(
@@ -1632,7 +1720,7 @@ function App(){
                   {(store.descPresets||[]).length===0&&<div style={{fontSize:12,color:"#9aa3b5",padding:"4px 2px"}}>적요 항목 없음</div>}
                   {(store.descPresets||[]).map((d)=>(
                     <div key={d} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 4px",borderRadius:5}}>
-                      <span onClick={()=>{setNewEnt({...newEnt,desc:d});setDescDropdownOpen(false);}} style={{flex:1,fontSize:12.5,cursor:"pointer",fontWeight:newEnt.desc===d?700:400}}>{d}</span>
+                      <span onMouseDown={(e)=>e.preventDefault()} onClick={()=>{setNewEnt({...newEnt,desc:d});setDescDropdownOpen(false);}} style={{flex:1,fontSize:12.5,cursor:"pointer",fontWeight:newEnt.desc===d?700:400}}>{d}</span>
                       <button type="button" onClick={(e)=>{e.stopPropagation();delDescPreset(d);}} style={{...S.rBtn,fontSize:10,marginLeft:6}}>✕</button>
                     </div>
                   ))}
